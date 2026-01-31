@@ -12,7 +12,6 @@ public sealed class LibraryScanService
     private readonly HashSet<string> _allowedExt;
     private readonly string[] _ignoreFolderKeywords;
     private readonly int _ignoreShortTracksSeconds;
-    private readonly List<FileSystemWatcher> _watchers = new();
 
     public LibraryScanService(Db db, SettingsService settings)
     {
@@ -141,21 +140,6 @@ public sealed class LibraryScanService
         }
 
         return false;
-    }
-
-    private void HandleFileChange(string path)
-    {
-        try
-        {
-            if (ShouldIgnorePath(path)) return;
-            if (!_allowedExt.Contains(Path.GetExtension(path))) return;
-            if (!File.Exists(path)) return;
-            TryUpsert(path);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Watcher failed for '{path}'. {ex.GetType().Name}: {ex.Message}");
-        }
     }
 
     private string? SaveCover(string filePath, byte[] bytes)

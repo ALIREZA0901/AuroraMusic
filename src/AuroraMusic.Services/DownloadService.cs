@@ -27,7 +27,6 @@ public sealed class DownloadService
     private readonly SemaphoreSlim _concurrency;
     private readonly List<DownloadItem> _items = new();
     private readonly object _itemsLock = new();
-    private readonly Dictionary<Guid, CancellationTokenSource> _tokens = new();
     public IReadOnlyList<DownloadItem> Items
     {
         get
@@ -65,8 +64,6 @@ public sealed class DownloadService
         lock (_itemsLock)
         {
             _items.Insert(0, item);
-            var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _tokens[item.Id] = linked;
         }
         ItemsChanged?.Invoke();
 
