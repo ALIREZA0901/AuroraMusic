@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Linq;
 using AuroraMusic.Core;
 
 namespace AuroraMusic.Services;
@@ -25,7 +26,17 @@ public sealed class DownloadService
 
     private readonly SemaphoreSlim _concurrency;
     private readonly List<DownloadItem> _items = new();
-    public IReadOnlyList<DownloadItem> Items => _items;
+    private readonly object _itemsLock = new();
+    public IReadOnlyList<DownloadItem> Items
+    {
+        get
+        {
+            lock (_itemsLock)
+            {
+                return _items.ToList();
+            }
+        }
+    }
 
     public event Action? ItemsChanged;
 
@@ -47,10 +58,13 @@ public sealed class DownloadService
         }
 
         var fileName = suggestedFileName ?? GuessFileName(url);
-        var savePath = Path.Combine(workspace, SanitizeFileName(fileName));
+        var savePath = GetUniqueSavePath(workspace, SanitizeFileName(fileName));
 
         var item = new DownloadItem(Guid.NewGuid(), url, fileName, savePath, null, 0, "Queued", DateTime.UtcNow, null);
-        _items.Insert(0, item);
+        lock (_itemsLock)
+        {
+            _items.Insert(0, item);
+        }
         ItemsChanged?.Invoke();
 
         _ = Task.Run(() => RunDownloadAsync(item.Id, ct), ct);
@@ -62,10 +76,9 @@ public sealed class DownloadService
         await _concurrency.WaitAsync(ct);
         try
         {
-            var idx = _items.FindIndex(x => x.Id == id);
-            if (idx < 0) return;
+            if (!TryGetItem(id, out var current)) return;
 
-            Update(idx, _items[idx] with { Status = "Preparing", LastError = null });
+            UpdateById(id, item => item with { Status = "Preparing", LastError = null });
 
             // Try HEAD to detect size/range support (fallback safely if not supported).
             long? len = null;
@@ -73,42 +86,39 @@ public sealed class DownloadService
 
             try
             {
-                using var head = new HttpRequestMessage(HttpMethod.Head, _items[idx].Url);
+                using var head = new HttpRequestMessage(HttpMethod.Head, current.Url);
                 using var headResp = await _http.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, ct);
                 len = headResp.Content.Headers.ContentLength;
                 acceptRanges = headResp.Headers.AcceptRanges.Any(r => r.Equals("bytes", StringComparison.OrdinalIgnoreCase));
             }
             catch (Exception ex)
             {
-                Log.Warn($"DownloadService: HEAD failed for '{_items[idx].Url}'. Falling back to GET. {ex.GetType().Name}: {ex.Message}");
+                Log.Warn($"DownloadService: HEAD failed for '{current.Url}'. Falling back to GET. {ex.GetType().Name}: {ex.Message}");
             }
 
-            Update(idx, _items[idx] with { TotalBytes = len });
+            UpdateById(id, item => item with { TotalBytes = len });
 
             if (acceptRanges && len is > 5_000_000)
             {
-                Update(idx, _items[idx] with { Status = "Downloading (multipart)" });
-                await DownloadMultipartAsync(idx, ct);
+                UpdateById(id, item => item with { Status = "Downloading (multipart)" });
+                await DownloadMultipartAsync(id, ct);
             }
             else
             {
-                Update(idx, _items[idx] with { Status = "Downloading" });
-                await DownloadSingleAsync(idx, ct);
+                UpdateById(id, item => item with { Status = "Downloading" });
+                await DownloadSingleAsync(id, ct);
             }
 
-            idx = _items.FindIndex(x => x.Id == id);
-            if (idx >= 0) Update(idx, _items[idx] with { Status = "Done", LastError = null });
+            UpdateById(id, item => item with { Status = "Done", LastError = null });
         }
         catch (OperationCanceledException)
         {
-            var idx = _items.FindIndex(x => x.Id == id);
-            if (idx >= 0) Update(idx, _items[idx] with { Status = "Cancelled", LastError = "Cancelled" });
+            UpdateById(id, item => item with { Status = "Cancelled", LastError = "Cancelled" });
         }
         catch (Exception ex)
         {
             Log.Error($"DownloadService: download failed for id={id}", ex);
-            var idx = _items.FindIndex(x => x.Id == id);
-            if (idx >= 0) Update(idx, _items[idx] with { Status = "Failed", LastError = ex.Message });
+            UpdateById(id, item => item with { Status = "Failed", LastError = ex.Message });
         }
         finally
         {
@@ -116,15 +126,15 @@ public sealed class DownloadService
         }
     }
 
-    private async Task DownloadSingleAsync(int idx, CancellationToken ct)
+    private async Task DownloadSingleAsync(Guid id, CancellationToken ct)
     {
-        var item = _items[idx];
+        if (!TryGetItem(id, out var item)) return;
 
         using var resp = await _http.GetAsync(item.Url, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
 
         var total = resp.Content.Headers.ContentLength ?? item.TotalBytes;
-        Update(idx, item with { TotalBytes = total });
+        UpdateById(id, existing => existing with { TotalBytes = total });
 
         await using var input = await resp.Content.ReadAsStreamAsync(ct);
         await using var output = File.Create(item.SavePath);
@@ -141,18 +151,16 @@ public sealed class DownloadService
             readTotal += read;
 
             // idx may shift if list changes; re-find by id
-            var currentIdx = _items.FindIndex(x => x.Id == item.Id);
-            if (currentIdx >= 0)
-                Update(currentIdx, _items[currentIdx] with { DownloadedBytes = readTotal });
+            UpdateById(id, existing => existing with { DownloadedBytes = readTotal });
         }
     }
 
-    private async Task DownloadMultipartAsync(int idx, CancellationToken ct)
+    private async Task DownloadMultipartAsync(Guid id, CancellationToken ct)
     {
-        var item = _items[idx];
+        if (!TryGetItem(id, out var item)) return;
         if (item.TotalBytes is null)
         {
-            await DownloadSingleAsync(idx, ct);
+            await DownloadSingleAsync(id, ct);
             return;
         }
 
@@ -165,27 +173,30 @@ public sealed class DownloadService
         var ranges = SplitRanges(total, parts).ToList();
         var partFiles = ranges.Select((_, i) => Path.Combine(tempDir, $"{item.Id}_{i}.part")).ToArray();
 
-        await Task.WhenAll(ranges.Select((r, i) => DownloadRangeAsync(item.Url, partFiles[i], r.start, r.end, ct)));
-
-        await using var outStream = File.Create(item.SavePath);
-        foreach (var pf in partFiles)
+        try
         {
-            await using var ps = File.OpenRead(pf);
-            await ps.CopyToAsync(outStream, ct);
-        }
+            await Task.WhenAll(ranges.Select((r, i) => DownloadRangeAsync(item.Url, partFiles[i], r.start, r.end, ct)));
 
-        foreach (var pf in partFiles)
+            await using var outStream = File.Create(item.SavePath);
+            foreach (var pf in partFiles)
+            {
+                await using var ps = File.OpenRead(pf);
+                await ps.CopyToAsync(outStream, ct);
+            }
+
+            UpdateById(id, existing => existing with { DownloadedBytes = total });
+        }
+        finally
         {
-            try { File.Delete(pf); }
-            catch (Exception ex) { Log.Warn($"DownloadService: failed to delete part '{pf}'. {ex.Message}"); }
+            foreach (var pf in partFiles)
+            {
+                try { File.Delete(pf); }
+                catch (Exception ex) { Log.Warn($"DownloadService: failed to delete part '{pf}'. {ex.Message}"); }
+            }
+
+            try { Directory.Delete(tempDir, true); }
+            catch (Exception ex) { Log.Warn($"DownloadService: failed to delete tempDir '{tempDir}'. {ex.Message}"); }
         }
-
-        try { Directory.Delete(tempDir, true); }
-        catch (Exception ex) { Log.Warn($"DownloadService: failed to delete tempDir '{tempDir}'. {ex.Message}"); }
-
-        var currentIdx = _items.FindIndex(x => x.Id == item.Id);
-        if (currentIdx >= 0)
-            Update(currentIdx, _items[currentIdx] with { DownloadedBytes = total });
     }
 
     private async Task DownloadRangeAsync(string url, string path, long start, long end, CancellationToken ct)
@@ -221,11 +232,59 @@ public sealed class DownloadService
         }
     }
 
-    private void Update(int idx, DownloadItem newItem)
+    private void UpdateById(Guid id, Func<DownloadItem, DownloadItem> update)
     {
-        if (idx < 0 || idx >= _items.Count) return;
-        _items[idx] = newItem;
-        ItemsChanged?.Invoke();
+        var changed = false;
+        lock (_itemsLock)
+        {
+            var idx = _items.FindIndex(x => x.Id == id);
+            if (idx < 0 || idx >= _items.Count) return;
+            _items[idx] = update(_items[idx]);
+            changed = true;
+        }
+        if (changed)
+            ItemsChanged?.Invoke();
+    }
+
+    private bool TryGetItem(Guid id, out DownloadItem item)
+    {
+        lock (_itemsLock)
+        {
+            var idx = _items.FindIndex(x => x.Id == id);
+            if (idx < 0 || idx >= _items.Count)
+            {
+                item = default!;
+                return false;
+            }
+
+            item = _items[idx];
+            return true;
+        }
+    }
+
+    private string GetUniqueSavePath(string workspace, string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        var ext = Path.GetExtension(fileName);
+        var candidate = Path.Combine(workspace, fileName);
+        var index = 1;
+
+        while (true)
+        {
+            if (!File.Exists(candidate) && !IsPathInQueue(candidate))
+                return candidate;
+
+            candidate = Path.Combine(workspace, $"{name} ({index}){ext}");
+            index++;
+        }
+    }
+
+    private bool IsPathInQueue(string path)
+    {
+        lock (_itemsLock)
+        {
+            return _items.Any(i => string.Equals(i.SavePath, path, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     private static string GuessFileName(string url)
