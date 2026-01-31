@@ -11,8 +11,8 @@ This ZIP contains the full **Aurora Music** Windows desktop project:
 ## Build Requirements (Windows)
 1) Visual Studio 2022
    - Workload: **.NET Desktop Development**
-2) .NET 8 SDK (comes with the workload)
-3) WebView2 Runtime (usually already installed)
+2) .NET 8 SDK (pinned via `global.json`, comes with the workload)
+3) WebView2 Runtime (usually already installed, required for the embedded browser)
    - https://developer.microsoft.com/microsoft-edge/webview2/
 
 ## How to run (easy)
