@@ -86,6 +86,9 @@ public partial class SettingsViewModel : ObservableObject
             );
 
             if (!int.TryParse(IgnoreShortTracksSeconds, out var minSeconds)) minSeconds = 10;
+            partsDefault = Math.Clamp(partsDefault, 1, 12);
+            maxDownloads = Math.Max(1, maxDownloads);
+            minSeconds = Math.Max(1, minSeconds);
 
             var keywords = ParseList(IgnoreFolderKeywords);
             var extensions = ParseExtensions(AllowedExtensions);
@@ -112,7 +115,7 @@ public partial class SettingsViewModel : ObservableObject
             Directory.CreateDirectory(paths.LyricsPath);
             Directory.CreateDirectory(paths.ArtistsPath);
 
-            Status = "Applied. Restart Aurora Music to ensure all services use the new paths.";
+            Status = "Applied. Restart Aurora Music to ensure all services use the new paths and download settings.";
         }
         catch (Exception ex)
         {

@@ -29,6 +29,9 @@ public partial class DiagnosticsViewModel : ObservableObject
     [ObservableProperty] private string dbStatus = "";
     [ObservableProperty] private string webView2Status = "";
     [ObservableProperty] private string audioStatus = "";
+    [ObservableProperty] private string scanSettingsStatus = "";
+    [ObservableProperty] private string downloadSettingsStatus = "";
+    [ObservableProperty] private string networkSettingsStatus = "";
 
     public IRelayCommand RefreshCommand { get; }
     public IRelayCommand OpenLogsCommand { get; }
@@ -85,11 +88,49 @@ public partial class DiagnosticsViewModel : ObservableObject
             DbStatus = _db.HealthCheck();
             WebView2Status = CheckWebView2();
             AudioStatus = PlaybackService.GetAudioDiagnostics();
+            ScanSettingsStatus = BuildScanSettingsStatus(_settings.Current);
+            DownloadSettingsStatus = BuildDownloadSettingsStatus(_settings.Current);
+            NetworkSettingsStatus = BuildNetworkSettingsStatus(_settings.Current);
         }
         catch (Exception ex)
         {
             Log.Error("DiagnosticsViewModel.Refresh failed", ex);
         }
+    }
+
+    private static string BuildScanSettingsStatus(AppSettings settings)
+    {
+        var ignoreFolders = settings.IgnoreFolderKeywords.Length == 0
+            ? "none"
+            : string.Join(", ", settings.IgnoreFolderKeywords);
+        var extensions = settings.AllowedExtensions.Length == 0
+            ? "none"
+            : string.Join(", ", settings.AllowedExtensions);
+
+        return string.Join(Environment.NewLine, new[]
+        {
+            $"Watch folders: {settings.WatchFolders}",
+            $"Ignore short tracks (< {settings.IgnoreShortTracksSeconds}s)",
+            $"Ignore folders: {ignoreFolders}",
+            $"Allowed extensions: {extensions}"
+        });
+    }
+
+    private static string BuildDownloadSettingsStatus(AppSettings settings)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            $"Max concurrent downloads: {settings.MaxConcurrentDownloads}",
+            $"Download parts default: {settings.DownloadPartsDefault}"
+        });
+    }
+
+    private static string BuildNetworkSettingsStatus(AppSettings settings)
+    {
+        return string.Join(Environment.NewLine, new[]
+        {
+            $"Auto-enrich when online: {settings.AutoEnrichWhenOnline}"
+        });
     }
 
     private static string BuildPathsStatus(AppPaths p)
