@@ -60,12 +60,25 @@ public partial class MainWindowViewModel : ObservableObject
         _playback = new PlaybackService();
         _downloads = new DownloadService(_settings);
 
-        _libraryVm = new ViewModels.LibraryViewModel(_db, _scanner, _playback, OnNowPlaying);
+        _libraryVm = new ViewModels.LibraryViewModel(_db, _scanner, _playback, _settings, OnNowPlaying);
         _browserVm = new ViewModels.BrowserViewModel(_downloads);
         _downloadsVm = new ViewModels.DownloadsViewModel(_downloads);
         _settingsVm = new ViewModels.SettingsViewModel(_settings);
         _donateVm = new ViewModels.DonateViewModel();
         _diagnosticsVm = new ViewModels.DiagnosticsViewModel(_settings, settingsFile, _db);
+
+        if (_settings.Current.WatchFolders)
+        {
+            try
+            {
+                var music = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+                _scanner.StartWatching(new[] { music, _settings.Current.Paths.InboxPath });
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Failed to start folder watcher. {ex.GetType().Name}: {ex.Message}");
+            }
+        }
 
         NavigateLibraryCommand = new RelayCommand(() => CurrentView = Bind(new LibraryView(), _libraryVm));
         NavigateBrowserCommand = new RelayCommand(() => CurrentView = Bind(new BrowserView(), _browserVm));
