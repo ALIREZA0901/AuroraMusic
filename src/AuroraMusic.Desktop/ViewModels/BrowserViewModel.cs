@@ -8,10 +8,11 @@ namespace AuroraMusic.ViewModels;
 
 public partial class BrowserViewModel : ObservableObject
 {
+    private static readonly Uri HomeUri = new("https://www.google.com");
     private readonly DownloadService _downloads;
 
-    [ObservableProperty] private string address = "https://www.google.com";
-    [ObservableProperty] private Uri browserUri = new Uri("https://www.google.com");
+    [ObservableProperty] private string address = HomeUri.ToString();
+    [ObservableProperty] private Uri browserUri = HomeUri;
 
     public IRelayCommand NavigateCommand { get; }
 
@@ -25,8 +26,7 @@ public partial class BrowserViewModel : ObservableObject
             // Empty input -> go home
             if (string.IsNullOrWhiteSpace(input))
             {
-                BrowserUri = new Uri("https://www.google.com");
-                Address = BrowserUri.ToString();
+                SetBrowserUri(HomeUri);
                 return;
             }
 
@@ -35,10 +35,7 @@ public partial class BrowserViewModel : ObservableObject
             bool looksLikeSearch = input.Contains(' ') || (!input.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !input.Contains('.'));
             if (looksLikeSearch)
             {
-                var q = Uri.EscapeDataString(input);
-                var searchUrl = $"https://www.google.com/search?q={q}";
-                BrowserUri = new Uri(searchUrl);
-                Address = BrowserUri.ToString();
+                SetBrowserUri(BuildSearchUri(input));
                 return;
             }
 
@@ -53,18 +50,29 @@ public partial class BrowserViewModel : ObservableObject
             // Validate
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
                 (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-                 uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)))
+                 uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase)) &&
+                !string.IsNullOrWhiteSpace(uri.Host))
             {
-                BrowserUri = uri;
-                Address = BrowserUri.ToString();
+                SetBrowserUri(uri);
                 return;
             }
 
             // Fallback: search
-            var fallbackQ = Uri.EscapeDataString(input);
-            BrowserUri = new Uri($"https://www.google.com/search?q={fallbackQ}");
-            Address = BrowserUri.ToString();
+            SetBrowserUri(BuildSearchUri(input));
         });
+    }
+
+    private static Uri BuildSearchUri(string query)
+    {
+        var q = Uri.EscapeDataString(query);
+        var url = $"https://www.google.com/search?q={q}";
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : HomeUri;
+    }
+
+    private void SetBrowserUri(Uri uri)
+    {
+        BrowserUri = uri;
+        Address = BrowserUri.ToString();
     }
 
     public async void HandleDownloadStarting(string url)

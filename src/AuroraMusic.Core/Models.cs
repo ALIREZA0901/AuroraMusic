@@ -38,5 +38,8 @@ public record AppSettings(
     bool AutoEnrichWhenOnline,
     bool WatchFolders,
     int DownloadPartsDefault,
-    int MaxConcurrentDownloads
+    int MaxConcurrentDownloads,
+    int IgnoreShortTracksSeconds,
+    string[] IgnoreFolderKeywords,
+    string[] AllowedExtensions
 );
