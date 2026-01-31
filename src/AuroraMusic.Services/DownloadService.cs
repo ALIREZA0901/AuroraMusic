@@ -130,28 +130,39 @@ public sealed class DownloadService
     {
         if (!TryGetItem(id, out var item)) return;
 
-        using var resp = await _http.GetAsync(item.Url, HttpCompletionOption.ResponseHeadersRead, ct);
-        resp.EnsureSuccessStatusCode();
-
-        var total = resp.Content.Headers.ContentLength ?? item.TotalBytes;
-        UpdateById(id, existing => existing with { TotalBytes = total });
-
-        await using var input = await resp.Content.ReadAsStreamAsync(ct);
-        await using var output = File.Create(item.SavePath);
-
-        var buf = new byte[81920];
-        long readTotal = 0;
-
-        while (true)
+        var completed = false;
+        try
         {
-            var read = await input.ReadAsync(buf, ct);
-            if (read == 0) break;
+            using var resp = await _http.GetAsync(item.Url, HttpCompletionOption.ResponseHeadersRead, ct);
+            resp.EnsureSuccessStatusCode();
 
-            await output.WriteAsync(buf.AsMemory(0, read), ct);
-            readTotal += read;
+            var total = resp.Content.Headers.ContentLength ?? item.TotalBytes;
+            UpdateById(id, existing => existing with { TotalBytes = total });
 
-            // idx may shift if list changes; re-find by id
-            UpdateById(id, existing => existing with { DownloadedBytes = readTotal });
+            await using var input = await resp.Content.ReadAsStreamAsync(ct);
+            await using var output = File.Create(item.SavePath);
+
+            var buf = new byte[81920];
+            long readTotal = 0;
+
+            while (true)
+            {
+                var read = await input.ReadAsync(buf, ct);
+                if (read == 0) break;
+
+                await output.WriteAsync(buf.AsMemory(0, read), ct);
+                readTotal += read;
+
+                // idx may shift if list changes; re-find by id
+                UpdateById(id, existing => existing with { DownloadedBytes = readTotal });
+            }
+
+            completed = true;
+        }
+        finally
+        {
+            if (!completed)
+                TryDeleteFile(item.SavePath);
         }
     }
 
@@ -173,6 +184,7 @@ public sealed class DownloadService
         var ranges = SplitRanges(total, parts).ToList();
         var partFiles = ranges.Select((_, i) => Path.Combine(tempDir, $"{item.Id}_{i}.part")).ToArray();
 
+        var completed = false;
         try
         {
             await Task.WhenAll(ranges.Select((r, i) => DownloadRangeAsync(item.Url, partFiles[i], r.start, r.end, ct)));
@@ -185,9 +197,13 @@ public sealed class DownloadService
             }
 
             UpdateById(id, existing => existing with { DownloadedBytes = total });
+            completed = true;
         }
         finally
         {
+            if (!completed)
+                TryDeleteFile(item.SavePath);
+
             foreach (var pf in partFiles)
             {
                 try { File.Delete(pf); }
@@ -284,6 +300,19 @@ public sealed class DownloadService
         lock (_itemsLock)
         {
             return _items.Any(i => string.Equals(i.SavePath, path, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"DownloadService: failed to delete '{path}'. {ex.Message}");
         }
     }
 
