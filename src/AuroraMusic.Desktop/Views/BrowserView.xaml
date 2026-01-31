@@ -1,0 +1,20 @@
+<UserControl x:Class="AuroraMusic.Views.BrowserView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Orientation="Horizontal">
+            <TextBox Width="620" Text="{Binding Address, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Content="Go" Margin="10,0,0,0" Command="{Binding NavigateCommand}"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Margin="0,14,0,0" BorderBrush="#243143" BorderThickness="1" CornerRadius="12">
+            <wv2:WebView2 x:Name="Web" Source="{Binding BrowserUri}" />
+        </Border>
+    </Grid>
+</UserControl>
