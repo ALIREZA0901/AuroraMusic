@@ -2,18 +2,20 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using AuroraMusic.Core;
+using Microsoft.Web.WebView2.Core;
 
 namespace AuroraMusic.Views;
 
 public partial class BrowserView : UserControl
 {
     private bool _initialized;
+    private EventHandler<CoreWebView2DownloadStartingEventArgs>? _downloadStartingHandler;
 
     public BrowserView()
     {
         InitializeComponent();
         Loaded += OnLoaded;
-        Unloaded += (_, __) => _initialized = false; // re-init when reloaded
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -26,7 +28,7 @@ public partial class BrowserView : UserControl
             if (Web.CoreWebView2 == null)
                 await Web.EnsureCoreWebView2Async();
 
-            Web.CoreWebView2.DownloadStarting += (_, args) =>
+            _downloadStartingHandler = (_, args) =>
             {
                 try
                 {
@@ -38,6 +40,7 @@ public partial class BrowserView : UserControl
                     Log.Error("BrowserView: DownloadStarting handler failed", ex);
                 }
             };
+            Web.CoreWebView2.DownloadStarting += _downloadStartingHandler;
         }
         catch (Exception ex)
         {
@@ -51,5 +54,16 @@ public partial class BrowserView : UserControl
 
             try { Web.IsEnabled = false; } catch { /* ignore */ }
         }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (Web.CoreWebView2 is not null && _downloadStartingHandler is not null)
+        {
+            Web.CoreWebView2.DownloadStarting -= _downloadStartingHandler;
+        }
+
+        _downloadStartingHandler = null;
+        _initialized = false; // re-init when reloaded
     }
 }
