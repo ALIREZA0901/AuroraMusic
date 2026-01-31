@@ -35,6 +35,8 @@ public record AppPaths(
 public record AppSettings(
     AppPaths Paths,
     long CacheQuotaBytesPc,
+    bool OnlineEnabled,
+    bool AiAssistEnabled,
     bool AutoEnrichWhenOnline,
     bool WatchFolders,
     int DownloadPartsDefault,

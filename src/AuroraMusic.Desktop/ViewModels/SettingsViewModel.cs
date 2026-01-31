@@ -22,6 +22,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string ignoreFolderKeywords;
     [ObservableProperty] private string allowedExtensions;
     [ObservableProperty] private bool watchFolders;
+    [ObservableProperty] private bool onlineEnabled;
+    [ObservableProperty] private bool aiAssistEnabled;
     [ObservableProperty] private bool autoEnrichWhenOnline;
     [ObservableProperty] private string downloadPartsDefault;
     [ObservableProperty] private string maxConcurrentDownloads;
@@ -44,6 +46,8 @@ public partial class SettingsViewModel : ObservableObject
         IgnoreFolderKeywords = string.Join(", ", _svc.Current.IgnoreFolderKeywords);
         AllowedExtensions = string.Join(", ", _svc.Current.AllowedExtensions);
         WatchFolders = _svc.Current.WatchFolders;
+        OnlineEnabled = _svc.Current.OnlineEnabled;
+        AiAssistEnabled = _svc.Current.AiAssistEnabled;
         AutoEnrichWhenOnline = _svc.Current.AutoEnrichWhenOnline;
         DownloadPartsDefault = Math.Max(1, _svc.Current.DownloadPartsDefault).ToString("0");
         MaxConcurrentDownloads = Math.Max(1, _svc.Current.MaxConcurrentDownloads).ToString("0");
@@ -98,6 +102,8 @@ public partial class SettingsViewModel : ObservableObject
                 Paths = paths,
                 CacheQuotaBytesPc = gb * 1024L * 1024 * 1024,
                 WatchFolders = WatchFolders,
+                OnlineEnabled = OnlineEnabled,
+                AiAssistEnabled = AiAssistEnabled,
                 AutoEnrichWhenOnline = AutoEnrichWhenOnline,
                 DownloadPartsDefault = partsDefault,
                 MaxConcurrentDownloads = maxDownloads,

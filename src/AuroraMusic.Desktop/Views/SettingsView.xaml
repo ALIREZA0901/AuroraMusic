@@ -32,6 +32,12 @@
             <TextBlock Text="Watch folders (auto-detect changes)" Margin="0,10,0,0"/>
             <CheckBox IsChecked="{Binding WatchFolders}" />
 
+            <TextBlock Text="Online features enabled" Margin="0,10,0,0"/>
+            <CheckBox IsChecked="{Binding OnlineEnabled}" />
+
+            <TextBlock Text="AI Assist enabled" Margin="0,10,0,0"/>
+            <CheckBox IsChecked="{Binding AiAssistEnabled}" />
+
             <TextBlock Text="Auto-enrich metadata when online" Margin="0,10,0,0"/>
             <CheckBox IsChecked="{Binding AutoEnrichWhenOnline}" />
 
