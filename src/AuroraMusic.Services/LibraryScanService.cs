@@ -7,16 +7,19 @@ namespace AuroraMusic.Services;
 
 public sealed class LibraryScanService
 {
-    private static readonly HashSet<string> AllowedExt = new(StringComparer.OrdinalIgnoreCase)
-    { ".mp3",".flac",".wav",".m4a",".aac",".ogg",".opus",".wma",".aiff",".aif" };
-
     private readonly Db _db;
     private readonly SettingsService _settings;
+    private readonly HashSet<string> _allowedExt;
+    private readonly string[] _ignoreFolderKeywords;
+    private readonly int _ignoreShortTracksSeconds;
 
     public LibraryScanService(Db db, SettingsService settings)
     {
         _db = db;
         _settings = settings;
+        _allowedExt = new HashSet<string>(_settings.Current.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        _ignoreFolderKeywords = _settings.Current.IgnoreFolderKeywords;
+        _ignoreShortTracksSeconds = _settings.Current.IgnoreShortTracksSeconds;
     }
 
     public void ScanFolders(IEnumerable<string> roots, IProgress<string>? progress = null)
@@ -43,7 +46,8 @@ public sealed class LibraryScanService
 
             foreach (var f in files)
             {
-                if (!AllowedExt.Contains(Path.GetExtension(f))) continue;
+                if (ShouldIgnorePath(f)) continue;
+                if (!_allowedExt.Contains(Path.GetExtension(f))) continue;
                 progress?.Report(f);
                 TryUpsert(f);
             }
@@ -63,6 +67,8 @@ public sealed class LibraryScanService
             if (string.IsNullOrWhiteSpace(album)) album = "Unknown Album";
 
             var duration = t.Properties.Duration.TotalSeconds;
+            if (_ignoreShortTracksSeconds > 0 && duration < _ignoreShortTracksSeconds)
+                return;
 
             string? coverPath = null;
             if (t.Tag.Pictures is { Length: > 0 })
@@ -78,6 +84,20 @@ public sealed class LibraryScanService
         {
             Log.Warn($"TryUpsert failed for '{filePath}'. {ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    private bool ShouldIgnorePath(string path)
+    {
+        if (_ignoreFolderKeywords.Length == 0) return false;
+
+        foreach (var keyword in _ignoreFolderKeywords)
+        {
+            if (string.IsNullOrWhiteSpace(keyword)) continue;
+            if (path.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private string? SaveCover(string filePath, byte[] bytes)

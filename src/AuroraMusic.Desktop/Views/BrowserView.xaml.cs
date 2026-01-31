@@ -28,6 +28,9 @@ public partial class BrowserView : UserControl
             if (Web.CoreWebView2 == null)
                 await Web.EnsureCoreWebView2Async();
 
+            if (Web.CoreWebView2 == null)
+                throw new InvalidOperationException("WebView2 failed to initialize.");
+
             _downloadStartingHandler = (_, args) =>
             {
                 try

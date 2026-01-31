@@ -12,12 +12,13 @@ public sealed class SettingsService
     {
         _settingsFile = settingsFile;
         Current = LoadOrCreateDefault(settingsFile);
+        Current = NormalizeSettings(Current);
 
         // If user has an old default path that requires admin (e.g., C:\AuroraMusic) or a non-writable path,
         // migrate to a safe per-user location under LocalAppData.
         try
         {
-            Current = MigrateIfNeeded(Current);
+            Current = NormalizeSettings(MigrateIfNeeded(Current));
             // Ensure settings file exists so next startup is consistent
             Save(Current);
         }
@@ -72,7 +73,10 @@ public sealed class SettingsService
             AutoEnrichWhenOnline: false, // opt-in only
             WatchFolders: true,
             DownloadPartsDefault: 6,
-            MaxConcurrentDownloads: 3
+            MaxConcurrentDownloads: 3,
+            IgnoreShortTracksSeconds: 10,
+            IgnoreFolderKeywords: new[] { "voice", "recording", "memo" },
+            AllowedExtensions: new[] { ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".aiff", ".aif" }
         );
     }
 
@@ -122,6 +126,27 @@ public sealed class SettingsService
         {
             Paths = newPaths,
             AutoEnrichWhenOnline = false
+        };
+    }
+
+    private static AppSettings NormalizeSettings(AppSettings s)
+    {
+        var ignoreFolders = s.IgnoreFolderKeywords ?? Array.Empty<string>();
+        var allowedExt = s.AllowedExtensions ?? Array.Empty<string>();
+
+        if (ignoreFolders.Length == 0)
+            ignoreFolders = new[] { "voice", "recording", "memo" };
+
+        if (allowedExt.Length == 0)
+            allowedExt = new[] { ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".aiff", ".aif" };
+
+        var minSeconds = s.IgnoreShortTracksSeconds <= 0 ? 10 : s.IgnoreShortTracksSeconds;
+
+        return s with
+        {
+            IgnoreFolderKeywords = ignoreFolders,
+            AllowedExtensions = allowedExt,
+            IgnoreShortTracksSeconds = minSeconds
         };
     }
 
