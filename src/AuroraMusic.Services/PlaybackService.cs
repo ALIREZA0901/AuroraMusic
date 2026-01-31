@@ -15,6 +15,7 @@ public sealed class PlaybackService : IDisposable
     private IWavePlayer? _output;
     private AudioFileReader? _reader;
     private string? _currentPath;
+    private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
 
     public bool IsPlaying => _output?.PlaybackState == PlaybackState.Playing;
 
@@ -59,6 +60,12 @@ public sealed class PlaybackService : IDisposable
             Stop();
             _reader = new AudioFileReader(path);
             _output = new WaveOutEvent();
+            _playbackStoppedHandler = (_, __) =>
+            {
+                _currentPath = null;
+                UpdateDiagnosticsSnapshot();
+            };
+            _output.PlaybackStopped += _playbackStoppedHandler;
             _output.Init(_reader);
             _output.Play();
             _currentPath = path;
@@ -103,6 +110,12 @@ public sealed class PlaybackService : IDisposable
     {
         try { _output?.Stop(); }
         catch (Exception ex) { Log.Warn($"PlaybackService.Stop: {_output?.GetType().Name} stop failed: {ex.Message}"); }
+
+        if (_output is not null && _playbackStoppedHandler is not null)
+        {
+            _output.PlaybackStopped -= _playbackStoppedHandler;
+        }
+        _playbackStoppedHandler = null;
 
         try { _output?.Dispose(); }
         catch (Exception ex) { Log.Warn($"PlaybackService.Stop: output dispose failed: {ex.Message}"); }
