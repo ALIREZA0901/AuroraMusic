@@ -26,7 +26,14 @@ public sealed class LibraryScanService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(r, "*.*", SearchOption.AllDirectories);
+                files = Directory.EnumerateFiles(
+                    r,
+                    "*.*",
+                    new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        IgnoreInaccessible = true
+                    });
             }
             catch (Exception ex)
             {
