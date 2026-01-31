@@ -70,6 +70,8 @@ public sealed class SettingsService
         return new AppSettings(
             Paths: paths,
             CacheQuotaBytesPc: 5L * 1024 * 1024 * 1024,
+            OnlineEnabled: true,
+            AiAssistEnabled: true,
             AutoEnrichWhenOnline: false, // opt-in only
             WatchFolders: true,
             DownloadPartsDefault: 6,
@@ -125,6 +127,8 @@ public sealed class SettingsService
         return s with
         {
             Paths = newPaths,
+            OnlineEnabled = s.OnlineEnabled,
+            AiAssistEnabled = s.AiAssistEnabled,
             AutoEnrichWhenOnline = false
         };
     }
