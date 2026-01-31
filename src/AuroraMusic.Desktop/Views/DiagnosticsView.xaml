@@ -39,6 +39,12 @@
                 <TextBlock Text="{Binding DbStatus}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                 <TextBlock Text="{Binding WebView2Status}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                 <TextBlock Text="{Binding AudioStatus}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <TextBlock Text="Scan settings" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                <TextBlock Text="{Binding ScanSettingsStatus}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <TextBlock Text="Download settings" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                <TextBlock Text="{Binding DownloadSettingsStatus}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <TextBlock Text="Network settings" FontWeight="SemiBold" Margin="0,10,0,4"/>
+                <TextBlock Text="{Binding NetworkSettingsStatus}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                 <TextBlock Text="Log directory:" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                 <TextBlock Text="{Binding LogDirectory}" TextWrapping="Wrap"/>
             </StackPanel>
