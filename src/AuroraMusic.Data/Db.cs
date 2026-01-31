@@ -1,4 +1,5 @@
 using AuroraMusic.Core;
+using System.Linq;
 using Dapper;
 using Microsoft.Data.Sqlite;
 
@@ -105,6 +106,8 @@ public IEnumerable<Track> SearchTracks(string query, int limit = 200)
         using var c = Open();
         c.Open();
 
+        var safeQuery = SanitizeFtsQuery(query);
+
         const string sql = @"
 SELECT id Id, file_path FilePath, title Title, artist Artist, album Album,
        duration_seconds DurationSeconds, cover_path CoverPath,
@@ -113,7 +116,18 @@ FROM tracks
 WHERE id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH @q)
 LIMIT @limit;";
 
-        return c.Query<Track>(sql, new { q = query, limit });
+        return c.Query<Track>(sql, new { q = safeQuery, limit });
+    }
+
+    private static string SanitizeFtsQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return "title";
+
+        var sanitized = query.Replace("\"", "\"\"");
+        var tokens = sanitized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0) return "title";
+
+        return string.Join(" ", tokens.Select(t => $"\"{t}\""));
     }
 
     public IEnumerable<Track> GetRecentTracks(int limit = 200)
@@ -130,6 +144,15 @@ ORDER BY date_added DESC
 LIMIT @limit;";
 
         return c.Query<Track>(sql, new { limit });
+    }
+
+    public void RemoveTrackByPath(string filePath)
+    {
+        using var c = Open();
+        c.Open();
+
+        const string sql = "DELETE FROM tracks WHERE file_path = @filePath;";
+        c.Execute(sql, new { filePath });
     }
 
     public void UpsertTrack(string filePath, string title, string artist, string album, double durationSeconds, string? coverPath, string? hash, bool isDuplicate)

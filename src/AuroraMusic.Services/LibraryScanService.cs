@@ -7,16 +7,20 @@ namespace AuroraMusic.Services;
 
 public sealed class LibraryScanService
 {
-    private static readonly HashSet<string> AllowedExt = new(StringComparer.OrdinalIgnoreCase)
-    { ".mp3",".flac",".wav",".m4a",".aac",".ogg",".opus",".wma",".aiff",".aif" };
-
     private readonly Db _db;
     private readonly SettingsService _settings;
+    private readonly HashSet<string> _allowedExt;
+    private readonly string[] _ignoreFolderKeywords;
+    private readonly int _ignoreShortTracksSeconds;
+    private readonly List<FileSystemWatcher> _watchers = new();
 
     public LibraryScanService(Db db, SettingsService settings)
     {
         _db = db;
         _settings = settings;
+        _allowedExt = new HashSet<string>(_settings.Current.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        _ignoreFolderKeywords = _settings.Current.IgnoreFolderKeywords;
+        _ignoreShortTracksSeconds = _settings.Current.IgnoreShortTracksSeconds;
     }
 
     public void ScanFolders(IEnumerable<string> roots, IProgress<string>? progress = null)
@@ -26,7 +30,14 @@ public sealed class LibraryScanService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(r, "*.*", SearchOption.AllDirectories);
+                files = Directory.EnumerateFiles(
+                    r,
+                    "*.*",
+                    new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        IgnoreInaccessible = true
+                    });
             }
             catch (Exception ex)
             {
@@ -36,11 +47,54 @@ public sealed class LibraryScanService
 
             foreach (var f in files)
             {
-                if (!AllowedExt.Contains(Path.GetExtension(f))) continue;
+                if (ShouldIgnorePath(f)) continue;
+                if (!_allowedExt.Contains(Path.GetExtension(f))) continue;
                 progress?.Report(f);
                 TryUpsert(f);
             }
         }
+    }
+
+    public void StartWatching(IEnumerable<string> roots)
+    {
+        StopWatching();
+
+        foreach (var root in roots.Where(Directory.Exists))
+        {
+            var watcher = new FileSystemWatcher(root)
+            {
+                IncludeSubdirectories = true,
+                EnableRaisingEvents = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            };
+
+            watcher.Created += (_, args) => HandleFileChange(args.FullPath);
+            watcher.Changed += (_, args) => HandleFileChange(args.FullPath);
+            watcher.Renamed += (_, args) =>
+            {
+                try { _db.RemoveTrackByPath(args.OldFullPath); }
+                catch (Exception ex) { Log.Warn($"Watcher delete failed for '{args.OldFullPath}'. {ex.Message}"); }
+                HandleFileChange(args.FullPath);
+            };
+            watcher.Deleted += (_, args) =>
+            {
+                try { _db.RemoveTrackByPath(args.FullPath); }
+                catch (Exception ex) { Log.Warn($"Watcher delete failed for '{args.FullPath}'. {ex.Message}"); }
+            };
+
+            _watchers.Add(watcher);
+        }
+    }
+
+    public void StopWatching()
+    {
+        foreach (var watcher in _watchers)
+        {
+            try { watcher.EnableRaisingEvents = false; }
+            catch { /* ignore */ }
+            watcher.Dispose();
+        }
+        _watchers.Clear();
     }
 
     public void TryUpsert(string filePath)
@@ -56,6 +110,8 @@ public sealed class LibraryScanService
             if (string.IsNullOrWhiteSpace(album)) album = "Unknown Album";
 
             var duration = t.Properties.Duration.TotalSeconds;
+            if (_ignoreShortTracksSeconds > 0 && duration < _ignoreShortTracksSeconds)
+                return;
 
             string? coverPath = null;
             if (t.Tag.Pictures is { Length: > 0 })
@@ -70,6 +126,35 @@ public sealed class LibraryScanService
         catch (Exception ex)
         {
             Log.Warn($"TryUpsert failed for '{filePath}'. {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private bool ShouldIgnorePath(string path)
+    {
+        if (_ignoreFolderKeywords.Length == 0) return false;
+
+        foreach (var keyword in _ignoreFolderKeywords)
+        {
+            if (string.IsNullOrWhiteSpace(keyword)) continue;
+            if (path.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void HandleFileChange(string path)
+    {
+        try
+        {
+            if (ShouldIgnorePath(path)) return;
+            if (!_allowedExt.Contains(Path.GetExtension(path))) return;
+            if (!File.Exists(path)) return;
+            TryUpsert(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Watcher failed for '{path}'. {ex.GetType().Name}: {ex.Message}");
         }
     }
 

@@ -19,6 +19,15 @@
                 <DataGridTextColumn Header="Downloaded" Binding="{Binding DownloadedBytes}" Width="*"/>
                 <DataGridTextColumn Header="Total" Binding="{Binding TotalBytes}" Width="*"/>
                 <DataGridTextColumn Header="Path" Binding="{Binding SavePath}" Width="2*"/>
+                <DataGridTemplateColumn Header="Actions" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="Cancel"
+                                    Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>
