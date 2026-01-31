@@ -1,6 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using System.Timers;
 using System.Windows;
 using AuroraMusic.Core;
 using AuroraMusic.Data;
@@ -16,6 +19,9 @@ public partial class LibraryViewModel : ObservableObject
     private readonly LibraryScanService _scanner;
     private readonly PlaybackService _playback;
     private readonly Action<string,string> _nowPlaying;
+    private readonly SettingsService _settings;
+    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly Timer _watchDebounce;
 
     [ObservableProperty] private string searchQuery = "title";
     [ObservableProperty] private ObservableCollection<Track> tracks = new();
@@ -31,9 +37,26 @@ public partial class LibraryViewModel : ObservableObject
     private readonly List<Track> _queue = new();
     private int _index = -1;
 
-    public LibraryViewModel(Db db, LibraryScanService scanner, PlaybackService playback, Action<string,string> nowPlaying)
+    public LibraryViewModel(Db db, LibraryScanService scanner, PlaybackService playback, SettingsService settings, Action<string,string> nowPlaying)
     {
-        _db = db; _scanner = scanner; _playback = playback; _nowPlaying = nowPlaying;
+        _db = db; _scanner = scanner; _playback = playback; _settings = settings; _nowPlaying = nowPlaying;
+
+        _watchDebounce = new Timer(2000) { AutoReset = false };
+        _watchDebounce.Elapsed += (_, __) =>
+        {
+            try
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (!IsBusy)
+                        _ = DoRescanAsync();
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"LibraryViewModel: watch refresh failed. {ex.GetType().Name}: {ex.Message}");
+            }
+        };
 
         SearchCommand = new RelayCommand(DoSearch);
         RescanCommand = new RelayCommand(() =>
@@ -52,6 +75,8 @@ public partial class LibraryViewModel : ObservableObject
             Log.Error("LibraryViewModel: failed to load recent tracks", ex);
             Tracks = new ObservableCollection<Track>();
         }
+
+        StartWatchers();
     }
 
     private void DoSearch()
@@ -129,4 +154,59 @@ public partial class LibraryViewModel : ObservableObject
 
     public void PlayNext() => PlayAt(Math.Min(_index + 1, _queue.Count - 1));
     public void PlayPrevious() => PlayAt(Math.Max(_index - 1, 0));
+
+    private void StartWatchers()
+    {
+        if (!_settings.Current.WatchFolders) return;
+
+        var roots = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+            _settings.Current.Paths.InboxPath
+        };
+
+        foreach (var root in roots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r)))
+        {
+            try
+            {
+                var watcher = new FileSystemWatcher(root)
+                {
+                    IncludeSubdirectories = true,
+                    EnableRaisingEvents = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
+                };
+
+                watcher.Created += OnLibraryChanged;
+                watcher.Changed += OnLibraryChanged;
+                watcher.Deleted += OnLibraryChanged;
+                watcher.Renamed += OnLibraryChanged;
+
+                _watchers.Add(watcher);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"LibraryViewModel: failed to watch '{root}'. {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    private void OnLibraryChanged(object sender, FileSystemEventArgs e)
+    {
+        if (!IsAudioPath(e.FullPath)) return;
+        _watchDebounce.Stop();
+        _watchDebounce.Start();
+    }
+
+    private bool IsAudioPath(string path)
+    {
+        try
+        {
+            var ext = Path.GetExtension(path);
+            return _settings.Current.AllowedExtensions.Any(e => e.Equals(ext, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -60,7 +60,7 @@ public partial class MainWindowViewModel : ObservableObject
         _playback = new PlaybackService();
         _downloads = new DownloadService(_settings);
 
-        _libraryVm = new ViewModels.LibraryViewModel(_db, _scanner, _playback, OnNowPlaying);
+        _libraryVm = new ViewModels.LibraryViewModel(_db, _scanner, _playback, _settings, OnNowPlaying);
         _browserVm = new ViewModels.BrowserViewModel(_downloads);
         _downloadsVm = new ViewModels.DownloadsViewModel(_downloads);
         _settingsVm = new ViewModels.SettingsViewModel(_settings);
