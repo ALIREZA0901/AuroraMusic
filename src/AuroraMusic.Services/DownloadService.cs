@@ -67,12 +67,13 @@ public sealed class DownloadService
         }
         ItemsChanged?.Invoke();
 
-        _ = Task.Run(() => RunDownloadAsync(item.Id, ct), ct);
+        _ = Task.Run(() => RunDownloadAsync(item.Id), ct);
         await Task.CompletedTask;
     }
 
-    private async Task RunDownloadAsync(Guid id, CancellationToken ct)
+    private async Task RunDownloadAsync(Guid id)
     {
+        var ct = TryGetToken(id);
         await _concurrency.WaitAsync(ct);
         try
         {
@@ -122,6 +123,7 @@ public sealed class DownloadService
         }
         finally
         {
+            CleanupToken(id);
             _concurrency.Release();
         }
     }
@@ -336,5 +338,34 @@ public sealed class DownloadService
             name = name.Replace(c, '_');
 
         return name;
+    }
+
+    public void Cancel(Guid id)
+    {
+        lock (_itemsLock)
+        {
+            if (_tokens.TryGetValue(id, out var cts))
+                cts.Cancel();
+        }
+    }
+
+    private CancellationToken TryGetToken(Guid id)
+    {
+        lock (_itemsLock)
+        {
+            return _tokens.TryGetValue(id, out var cts) ? cts.Token : CancellationToken.None;
+        }
+    }
+
+    private void CleanupToken(Guid id)
+    {
+        lock (_itemsLock)
+        {
+            if (_tokens.TryGetValue(id, out var cts))
+            {
+                _tokens.Remove(id);
+                cts.Dispose();
+            }
+        }
     }
 }
