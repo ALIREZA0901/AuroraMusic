@@ -146,6 +146,15 @@ LIMIT @limit;";
         return c.Query<Track>(sql, new { limit });
     }
 
+    public void RemoveTrackByPath(string filePath)
+    {
+        using var c = Open();
+        c.Open();
+
+        const string sql = "DELETE FROM tracks WHERE file_path = @filePath;";
+        c.Execute(sql, new { filePath });
+    }
+
     public void UpsertTrack(string filePath, string title, string artist, string album, double durationSeconds, string? coverPath, string? hash, bool isDuplicate)
     {
         using var c = Open();

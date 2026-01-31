@@ -12,6 +12,7 @@ public sealed class LibraryScanService
     private readonly HashSet<string> _allowedExt;
     private readonly string[] _ignoreFolderKeywords;
     private readonly int _ignoreShortTracksSeconds;
+    private readonly List<FileSystemWatcher> _watchers = new();
 
     public LibraryScanService(Db db, SettingsService settings)
     {
@@ -52,6 +53,48 @@ public sealed class LibraryScanService
                 TryUpsert(f);
             }
         }
+    }
+
+    public void StartWatching(IEnumerable<string> roots)
+    {
+        StopWatching();
+
+        foreach (var root in roots.Where(Directory.Exists))
+        {
+            var watcher = new FileSystemWatcher(root)
+            {
+                IncludeSubdirectories = true,
+                EnableRaisingEvents = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            };
+
+            watcher.Created += (_, args) => HandleFileChange(args.FullPath);
+            watcher.Changed += (_, args) => HandleFileChange(args.FullPath);
+            watcher.Renamed += (_, args) =>
+            {
+                try { _db.RemoveTrackByPath(args.OldFullPath); }
+                catch (Exception ex) { Log.Warn($"Watcher delete failed for '{args.OldFullPath}'. {ex.Message}"); }
+                HandleFileChange(args.FullPath);
+            };
+            watcher.Deleted += (_, args) =>
+            {
+                try { _db.RemoveTrackByPath(args.FullPath); }
+                catch (Exception ex) { Log.Warn($"Watcher delete failed for '{args.FullPath}'. {ex.Message}"); }
+            };
+
+            _watchers.Add(watcher);
+        }
+    }
+
+    public void StopWatching()
+    {
+        foreach (var watcher in _watchers)
+        {
+            try { watcher.EnableRaisingEvents = false; }
+            catch { /* ignore */ }
+            watcher.Dispose();
+        }
+        _watchers.Clear();
     }
 
     public void TryUpsert(string filePath)
@@ -98,6 +141,21 @@ public sealed class LibraryScanService
         }
 
         return false;
+    }
+
+    private void HandleFileChange(string path)
+    {
+        try
+        {
+            if (ShouldIgnorePath(path)) return;
+            if (!_allowedExt.Contains(Path.GetExtension(path))) return;
+            if (!File.Exists(path)) return;
+            TryUpsert(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Watcher failed for '{path}'. {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private string? SaveCover(string filePath, byte[] bytes)
