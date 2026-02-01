@@ -148,8 +148,6 @@ public sealed class SettingsService
 
         return s with
         {
-            OnlineEnabled = s.OnlineEnabled,
-            AiAssistEnabled = s.AiAssistEnabled,
             IgnoreFolderKeywords = ignoreFolders,
             AllowedExtensions = allowedExt,
             IgnoreShortTracksSeconds = minSeconds

@@ -22,8 +22,6 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string ignoreFolderKeywords;
     [ObservableProperty] private string allowedExtensions;
     [ObservableProperty] private bool watchFolders;
-    [ObservableProperty] private bool onlineEnabled;
-    [ObservableProperty] private bool aiAssistEnabled;
     [ObservableProperty] private bool autoEnrichWhenOnline;
     [ObservableProperty] private string downloadPartsDefault;
     [ObservableProperty] private string maxConcurrentDownloads;
@@ -31,6 +29,10 @@ public partial class SettingsViewModel : ObservableObject
 
     public IRelayCommand ApplyCommand { get; }
     public IRelayCommand OpenDataCommand { get; }
+    public IRelayCommand ClearCoversCacheCommand { get; }
+    public IRelayCommand ClearLyricsCacheCommand { get; }
+    public IRelayCommand ClearArtistsCacheCommand { get; }
+    public IRelayCommand ClearAllCacheCommand { get; }
 
     public SettingsViewModel(SettingsService svc)
     {
@@ -46,8 +48,6 @@ public partial class SettingsViewModel : ObservableObject
         IgnoreFolderKeywords = string.Join(", ", _svc.Current.IgnoreFolderKeywords);
         AllowedExtensions = string.Join(", ", _svc.Current.AllowedExtensions);
         WatchFolders = _svc.Current.WatchFolders;
-        OnlineEnabled = _svc.Current.OnlineEnabled;
-        AiAssistEnabled = _svc.Current.AiAssistEnabled;
         AutoEnrichWhenOnline = _svc.Current.AutoEnrichWhenOnline;
         DownloadPartsDefault = Math.Max(1, _svc.Current.DownloadPartsDefault).ToString("0");
         MaxConcurrentDownloads = Math.Max(1, _svc.Current.MaxConcurrentDownloads).ToString("0");
@@ -67,6 +67,10 @@ public partial class SettingsViewModel : ObservableObject
                 MessageBox.Show("Failed to open Data folder. Check logs.", "AuroraMusic", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         });
+        ClearCoversCacheCommand = new RelayCommand(() => ClearCacheDirectory(_svc.Current.Paths.CoversPath, "covers"));
+        ClearLyricsCacheCommand = new RelayCommand(() => ClearCacheDirectory(_svc.Current.Paths.LyricsPath, "lyrics"));
+        ClearArtistsCacheCommand = new RelayCommand(() => ClearCacheDirectory(_svc.Current.Paths.ArtistsPath, "artists"));
+        ClearAllCacheCommand = new RelayCommand(() => ClearCacheDirectory(_svc.Current.Paths.CachePath, "all cache"));
     }
 
     private void Apply()
@@ -102,8 +106,6 @@ public partial class SettingsViewModel : ObservableObject
                 Paths = paths,
                 CacheQuotaBytesPc = gb * 1024L * 1024 * 1024,
                 WatchFolders = WatchFolders,
-                OnlineEnabled = OnlineEnabled,
-                AiAssistEnabled = AiAssistEnabled,
                 AutoEnrichWhenOnline = AutoEnrichWhenOnline,
                 DownloadPartsDefault = partsDefault,
                 MaxConcurrentDownloads = maxDownloads,
@@ -128,6 +130,55 @@ public partial class SettingsViewModel : ObservableObject
             Log.Error("Settings apply failed", ex);
             Status = "Apply failed. Check logs.";
             MessageBox.Show("Apply failed. Check logs for details.", "AuroraMusic", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ClearCacheDirectory(string? path, string label)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                Status = $"Cache path for {label} is not set.";
+                return;
+            }
+
+            if (!Directory.Exists(path))
+            {
+                Status = $"No {label} cache to clear.";
+                return;
+            }
+
+            var removed = 0;
+            foreach (var entry in Directory.EnumerateFileSystemEntries(path))
+            {
+                try
+                {
+                    if (Directory.Exists(entry))
+                    {
+                        Directory.Delete(entry, true);
+                    }
+                    else
+                    {
+                        File.Delete(entry);
+                    }
+                    removed++;
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Failed to delete cache entry '{entry}'", ex);
+                }
+            }
+
+            Status = removed == 0
+                ? $"No {label} cache entries to remove."
+                : $"Cleared {removed} {label} cache entr{(removed == 1 ? "y" : "ies")}.";
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to clear {label} cache.", ex);
+            Status = $"Failed to clear {label} cache. Check logs.";
+            MessageBox.Show($"Failed to clear {label} cache. Check logs for details.", "AuroraMusic", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 

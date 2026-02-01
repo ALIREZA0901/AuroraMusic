@@ -20,6 +20,14 @@
             <TextBlock Text="Cache quota (GB) - default 5 on PC" Margin="0,10,0,0"/>
             <TextBox Text="{Binding CacheQuotaGb}" />
 
+            <TextBlock Text="Cache maintenance" Margin="0,12,0,0" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <Button Content="Clear Covers Cache" Command="{Binding ClearCoversCacheCommand}" />
+                <Button Content="Clear Lyrics Cache" Margin="8,0,0,0" Command="{Binding ClearLyricsCacheCommand}" />
+                <Button Content="Clear Artists Cache" Margin="8,0,0,0" Command="{Binding ClearArtistsCacheCommand}" />
+                <Button Content="Clear All Cache" Margin="8,0,0,0" Command="{Binding ClearAllCacheCommand}" />
+            </StackPanel>
+
             <TextBlock Text="Ignore short tracks (seconds)" Margin="0,10,0,0"/>
             <TextBox Text="{Binding IgnoreShortTracksSeconds}" />
 
@@ -31,12 +39,6 @@
 
             <TextBlock Text="Watch folders (auto-detect changes)" Margin="0,10,0,0"/>
             <CheckBox IsChecked="{Binding WatchFolders}" />
-
-            <TextBlock Text="Online features enabled" Margin="0,10,0,0"/>
-            <CheckBox IsChecked="{Binding OnlineEnabled}" />
-
-            <TextBlock Text="AI Assist enabled" Margin="0,10,0,0"/>
-            <CheckBox IsChecked="{Binding AiAssistEnabled}" />
 
             <TextBlock Text="Auto-enrich metadata when online" Margin="0,10,0,0"/>
             <CheckBox IsChecked="{Binding AutoEnrichWhenOnline}" />
